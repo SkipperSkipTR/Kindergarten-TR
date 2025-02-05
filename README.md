@@ -1,2 +1,2 @@
-# TGYH_TR
-Turkish Language Mod for Thank Goodness You're Here
+# Thank Goodness You're Here Türkçe Yama
+Kurulum: *Yapılacak*
