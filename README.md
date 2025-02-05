@@ -1,2 +1,2 @@
-# Thank Goodness You're Here Türkçe Yama
+# Kindergarten Türkçe Yama
 Kurulum: *Yapılacak*
