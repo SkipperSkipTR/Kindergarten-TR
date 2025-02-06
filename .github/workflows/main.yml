@@ -1,2 +1,22 @@
-- name: Checksums Action
-  uses: thewh1teagle/checksum@v1
+name: Create checksum.txt
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Run checksum action
+        uses: thewh1teagle/checksum@v1
+        with:
+          patterns: | # Optional
+            *.zip
+            *.tar.gz
+            *.txt
+            !b.txt
+          algorithm: sha256 # Optional
+        env:
+          # You must enable write permission in github.com/user/repo/settings/actions -> Workflow permissions -> Read and write permissions
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
