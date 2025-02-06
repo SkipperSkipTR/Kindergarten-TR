@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using Microsoft.Win32;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using System.Security.Cryptography;
 
 namespace ModInstaller
 {
@@ -39,7 +40,7 @@ namespace ModInstaller
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Error downloading 7za.exe: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show("Error downloading 7za.exe: " + ex.Message, "Hata", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
@@ -85,7 +86,64 @@ namespace ModInstaller
             }
         }
 
-        private void DownloadAndInstallMod_Click(object sender, RoutedEventArgs e)
+        // Modified VerifyModFile with fallback download
+        private async Task<bool> VerifyModFile(string modFilePath)
+        {
+            try
+            {
+                string checksumUrl = $"{modDownloadUrl}{gameVersion}/checksum.txt";
+                string checksumContent = await new WebClient().DownloadStringTaskAsync(checksumUrl);
+
+                foreach (var line in checksumContent.Split('\n'))
+                {
+                    var parts = line.Trim().Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 2 && parts[0] == "mod.zip")
+                    {
+                        string expectedHash = parts[1].ToLower();
+                        string actualHash = await ComputeFileHash(modFilePath);
+                        return actualHash == expectedHash;
+                    }
+                }
+            }
+            catch
+            {
+                // Fallback to download if checksum verification fails
+                await DownloadModFileAsync(modDownloadUrl + gameVersion + "/mod.zip", modFilePath);
+            }
+            return false;
+        }
+
+        // New dedicated download function
+        private async Task<bool> DownloadModFileAsync(string modFileUrl, string modFilePath)
+        {
+            try
+            {
+                var tcs = new TaskCompletionSource<bool>();
+                using (WebClient webClient = new WebClient())
+                {
+                    webClient.DownloadProgressChanged += (s, ev) =>
+                    {
+                        Dispatcher.InvokeAsync(() => ProgressBar.Value = ev.ProgressPercentage);
+                    };
+
+                    webClient.DownloadFileCompleted += (s, ev) =>
+                    {
+                        if (ev.Error != null) tcs.SetException(ev.Error);
+                        else tcs.SetResult(true);
+                    };
+
+                    webClient.DownloadFileAsync(new Uri(modFileUrl), modFilePath);
+                    return await tcs.Task;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // Modified DownloadAndInstallMod_Click
+        private async void DownloadAndInstallMod_Click(object sender, RoutedEventArgs e)
         {
             StatusText.Text = "Durum: İndirme başlatılıyor...";
             if (string.IsNullOrEmpty(gameVersion))
@@ -97,26 +155,50 @@ namespace ModInstaller
             string modFileUrl = modDownloadUrl + gameVersion + "/mod.zip";
             string modFilePath = Path.Combine(Path.GetTempPath(), "mod.zip");
 
-            WebClient webClient = new WebClient();
-            webClient.DownloadProgressChanged += (s, ev) =>
+            try
             {
-                Dispatcher.InvokeAsync(() => ProgressBar.Value = ev.ProgressPercentage);
-            };
-            webClient.DownloadFileCompleted += async (s, ev) =>
-            {
-                if (ev.Error == null)
+                if (File.Exists(modFilePath))
+                {
+                    if (!await VerifyModFile(modFilePath))
+                    {
+                        StatusText.Text = "Durum: Geçersiz yama dosyası - Yeniden indiriliyor...";
+                        await DownloadModFileAsync(modFileUrl, modFilePath);
+                    }
+                }
+                else
+                {
+                    await DownloadModFileAsync(modFileUrl, modFilePath);
+                }
+
+                if (await VerifyModFile(modFilePath))
                 {
                     await BackupAndExtractAsync(modFilePath);
                 }
                 else
                 {
-                    MessageBox.Show("Yama dosyası indirilirken hata oluştu. Versiyonunuzla (" + gameVersion + ") uyumlu yama dosyası olmayabilir.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show("İndirilen yama dosyası geçersiz. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.", "Hata", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
-            };
-            webClient.DownloadFileAsync(new Uri(modFileUrl), modFilePath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Yükleme hatası: {ex.Message}", "Hata", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
-        private async Task BackupAndExtractAsync(string modFilePath)
+        private async Task<string> ComputeFileHash(string filePath)
+        {
+            return await Task.Run(() =>
+            {
+                using (var sha256 = SHA256.Create())
+                using (var stream = File.OpenRead(filePath))
+                {
+                    byte[] hashBytes = sha256.ComputeHash(stream);
+                    return BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
+                }
+            });
+        }
+
+    private async Task BackupAndExtractAsync(string modFilePath)
         {
             StatusText.Text = "Durum: Sıkıştırılmış dosyadan çıkarma işlemi yapılıyor...";
             backupFolder = Path.Combine(gameFolderPath, "Yedek");
@@ -153,7 +235,9 @@ namespace ModInstaller
                 File.Copy(file, destinationFile, true);
             }
 
-            MessageBox.Show("Yama başarıyla yüklendi!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            ProgressBar.Value = 100;
+
+            MessageBox.Show("Yama başarıyla yüklendi!", "Başarılı", MessageBoxButton.OK, MessageBoxImage.Information);
             CheckModStatus();
         }
 
