@@ -1,0 +1,2 @@
+- name: Checksums Action
+  uses: thewh1teagle/checksum@v1
