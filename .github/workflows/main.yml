@@ -13,10 +13,8 @@ jobs:
         with:
           patterns: | # Optional
             *.zip
-            *.tar.gz
-            *.txt
-            !b.txt
           algorithm: sha256 # Optional
+          tag: 1.4.1, 1.5.0, 1.6.1
         env:
           # You must enable write permission in github.com/user/repo/settings/actions -> Workflow permissions -> Read and write permissions
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
